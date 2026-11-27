@@ -1,0 +1,122 @@
+Menu="Main:5"
+Title="Fusion-io Devices"
+Tag="bolt"
+---
+<style>
+#fio-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+#fio-table th { text-align: left; font-weight: normal; opacity: .7; padding: 4px 8px; white-space: nowrap; }
+#fio-table td { padding: 6px 8px; vertical-align: middle; border-top: 1px solid rgba(128,128,128,.25); }
+#fio-table .fio-name { font-weight: bold; }
+#fio-table .fio-sub { font-size: .9em; opacity: .7; }
+#fio-table button { margin: 0 4px 0 0; padding: 2px 10px; min-width: 0; }
+#fio-table .fio-hot { color: #e68a00; }
+#fio-table .fio-bar { display: inline-block; width: 80px; height: 8px; background: rgba(128,128,128,.25); vertical-align: middle; margin-right: 6px; }
+#fio-table .fio-bar span { display: block; height: 100%; background: #486dba; }
+#fio-msg { margin: 6px 0; min-height: 1.2em; }
+#fio-msg.err { color: #d33; }
+</style>
+
+<div id="fio-msg"></div>
+<table id="fio-table">
+  <thead>
+    <tr>
+      <th>Card</th><th>Health</th><th>Size</th><th>Filesystem</th><th>Mounted at</th>
+      <th title="Mount automatically after every restart">Auto mount</th>
+      <th title="Show the card as a normal disk so it can be used in the array or a pool. About 15-25% slower.">Array / pool</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody id="fio-rows"><tr><td colspan="8">Loading…</td></tr></tbody>
+</table>
+
+<script>
+(function () {
+  const base = '/plugins/fusionio/include/';
+  let busy = false;
+
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const gb = b => b == null ? '-' : (b >= 1e12 ? (b / 1e12).toFixed(2) + ' TB' : (b / 1e9).toFixed(1) + ' GB');
+
+  function say(text, isError) {
+    $('#fio-msg').text(text || '').toggleClass('err', !!isError);
+  }
+
+  function render(data) {
+    const rows = $('#fio-rows');
+    if (!data.driver) { rows.html('<tr><td colspan="8">The Fusion-io driver is not loaded. Check the system log: <code>grep fusionio /var/log/syslog</code></td></tr>'); return; }
+    if (!data.cards.length) { rows.html('<tr><td colspan="8">No Fusion-io cards found.</td></tr>'); return; }
+    rows.html(data.cards.map(c => {
+      const hot = c.temp != null && c.temp >= 70;
+      const health = `<span class="${hot ? 'fio-hot' : ''}">${c.temp != null ? c.temp.toFixed(0) + ' °C' : '?'}</span>`
+        + `<div class="fio-sub">${c.power_w} W · ECC errors ${c.ecc_errors ?? '?'}</div>`;
+      let fs, mounted, actions;
+      if (c.array_mode) {
+        fs = `<span class="fio-sub">shown as /dev/${esc(c.sd || '?')}</span>`;
+        mounted = '<span class="fio-sub">managed by Unraid (array / pool / Unassigned Devices)</span>';
+        actions = '';
+      } else {
+        fs = c.fs ? esc(c.fs) + (c.label ? `<div class="fio-sub">${esc(c.label)}</div>` : '') : '<span class="fio-sub">none</span>';
+        if (c.mountpoint) {
+          const pct = c.total ? Math.round(100 * c.used / c.total) : 0;
+          mounted = `${esc(c.mountpoint)}<div class="fio-sub"><span class="fio-bar"><span style="width:${pct}%"></span></span>${gb(c.used)} of ${gb(c.total)} used</div>`;
+          actions = `<button data-act="unmount">Unmount</button>`;
+        } else {
+          mounted = '<span class="fio-sub">not mounted</span>';
+          actions = (c.fs ? `<button data-act="mount">Mount</button>` : '') + `<button data-act="format">Format</button>`;
+        }
+      }
+      return `<tr data-card="${esc(c.serial)}" data-name="${esc(c.product)}">
+        <td><span class="fio-name">${esc(c.product)}</span><div class="fio-sub">SN ${esc(c.serial)} · /dev/${esc(c.dev)}</div></td>
+        <td>${health}</td>
+        <td>${gb(c.size)}</td>
+        <td>${fs}</td>
+        <td>${mounted}</td>
+        <td><input type="checkbox" data-act="automount" ${c.automount ? 'checked' : ''} ${c.array_mode ? 'disabled' : ''}></td>
+        <td><input type="checkbox" data-act="array" ${c.array_mode ? 'checked' : ''}></td>
+        <td style="white-space:nowrap">${actions}</td>
+      </tr>`;
+    }).join(''));
+  }
+
+  function refresh() {
+    if (busy) return;
+    $.getJSON(base + 'status.php').done(render).fail(() => say('Could not read the card status.', true));
+  }
+
+  function act(params, label) {
+    busy = true;
+    say(label + '…');
+    $('#fio-table button, #fio-table input').prop('disabled', true);
+    $.post(base + 'action.php', Object.assign({csrf_token: csrf_token}, params), null, 'json')
+      .done(r => say(r.message, !r.ok))
+      .fail(() => say('Request failed.', true))
+      .always(() => { busy = false; refresh(); });
+  }
+
+  $('#fio-rows').on('click', 'button', function () {
+    const tr = $(this).closest('tr'), card = tr.data('card'), name = tr.data('name');
+    const what = $(this).data('act');
+    if (what === 'mount') return act({action: 'mount', card}, 'Mounting ' + name);
+    if (what === 'unmount') return act({action: 'unmount', card}, 'Unmounting ' + name);
+    if (what === 'format') {
+      const fs = prompt(`Format ${name} (SN ${card}).\n\nFilesystem: type xfs or btrfs`, 'xfs');
+      if (!fs) return;
+      const label = prompt('Name for the card (1-12 letters, digits, - or _).\nIt will be mounted at /mnt/disks/<name>.', 'fusionio');
+      if (!label) return;
+      const confirmSn = prompt(`ALL DATA on ${name} will be erased.\n\nType the serial number ${card} to confirm:`);
+      if (confirmSn !== String(card)) { say('Format cancelled.'); return; }
+      return act({action: 'format', card, fs: fs.trim().toLowerCase(), label: label.trim(), confirm: confirmSn}, 'Formatting ' + name);
+    }
+  });
+
+  $('#fio-rows').on('change', 'input[type=checkbox]', function () {
+    const tr = $(this).closest('tr'), card = tr.data('card'), name = tr.data('name');
+    const on = this.checked, what = $(this).data('act');
+    if (what === 'array' && on && !confirm(`Show ${name} as a normal disk so it can be added to the array or a pool?\n\nThis is about 15-25% slower than direct mode, and the card can no longer be mounted here.`)) { this.checked = false; return; }
+    act({action: what, card, value: on ? 'yes' : 'no'}, (on ? 'Turning on ' : 'Turning off ') + (what === 'array' ? 'array/pool mode' : 'auto mount') + ' for ' + name);
+  });
+
+  refresh();
+  setInterval(refresh, 5000);
+})();
+</script>

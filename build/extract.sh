@@ -54,7 +54,14 @@ fi
 
 [[ -n "$SRC" ]] || { echo "ERROR: kernel source stub not found in Unraid $UNRAID_VERSION" >&2; exit 1; }
 echo "    found $(basename "$SRC")"
-cp -a "$SRC/.config" /work/unraid-src/
+# Unraid up to 7.2 ships ".config", from 7.4 on it is called "config".
+if [[ -f "$SRC/.config" ]]; then
+  cp -a "$SRC/.config" /work/unraid-src/.config
+elif [[ -f "$SRC/config" ]]; then
+  cp -a "$SRC/config" /work/unraid-src/.config
+else
+  echo "ERROR: no kernel config in $(basename "$SRC")" >&2; exit 1
+fi
 cp -a "$SRC"/*.patch /work/unraid-src/ 2>/dev/null || true
 
 KERNEL_RELEASE=$(basename "$SRC" | sed 's/^linux-//')     # 6.12.24-Unraid
