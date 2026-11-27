@@ -31,9 +31,19 @@ requested = os.environ.get("REQUESTED", "").split()
 min_version = vtuple(os.environ.get("MIN_VERSION", "6.12.0"))
 existing = set(os.environ.get("EXISTING", "").split())
 
+VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9.]+)?$")
+KERNEL_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+-Unraid$")
+PLUGIN_URL_RE = re.compile(r"^https://(releases|stable|next)\.(dl\.)?unraid\.net/")
+
 builds = {}  # kernel -> unraid version (newest release using that kernel)
-for r in sorted(releases, key=lambda r: vtuple(r["version"]), reverse=True):
-    v = r["version"]
+for r in sorted(releases, key=lambda r: vtuple(str(r.get("version", ""))), reverse=True):
+    v = str(r.get("version", ""))
+    if not VERSION_RE.match(v):
+        print(f"skip {v!r}: unexpected version format", file=sys.stderr)
+        continue
+    if not PLUGIN_URL_RE.match(str(r.get("plugin_url", ""))):
+        print(f"skip {v}: unexpected plugin_url host", file=sys.stderr)
+        continue
     if requested and v not in requested:
         continue
     if not requested and vtuple(v) < min_version:
@@ -48,6 +58,9 @@ for r in sorted(releases, key=lambda r: vtuple(r["version"]), reverse=True):
         print(f"skip {v}: no kernel entity", file=sys.stderr)
         continue
     kernel = m.group(1)
+    if not KERNEL_RE.match(kernel):
+        print(f"skip {v}: unexpected kernel name {kernel!r}", file=sys.stderr)
+        continue
     if kernel in builds:
         continue
     if kernel in existing and not requested:
