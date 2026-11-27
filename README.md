@@ -1,5 +1,11 @@
 # Fusion-io driver for Unraid
 
+
+<img width="646" height="181" alt="image" src="https://github.com/user-attachments/assets/ed892bac-26c1-4803-ba8b-1cddd298c8ae" />
+<img width="1912" height="289" alt="image" src="https://github.com/user-attachments/assets/55771f05-273f-4982-bbcf-42a1675e3158" />
+
+
+
 This plugin makes old **Fusion-io / SanDisk flash cards** work in Unraid:
 **ioDrive, ioDrive2, ioScale and ioScale2**.
 
