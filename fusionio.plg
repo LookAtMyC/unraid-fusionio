@@ -20,6 +20,7 @@
 <CHANGES>
 ###2026.11.27
 - First release: loads the community iomemory-vsl (VSL3) driver for Fusion-io / SanDisk ioDrive, ioDrive2, ioScale and ioScale2 cards.
+- Cards are shown as normal disks (sdX) by default so they appear in the Unraid web interface. Turn off with: fusionio-scsi disable
 </CHANGES>
 
 <!-- Helper: present the cards as normal SCSI (sd) disks through the kernel's
@@ -139,7 +140,7 @@ stop() {
 
 status() {
   local h; h=$(host_dir)
-  echo "boot setting: SD_DISKS=$(sed -n 's/^SD_DISKS="\(.*\)"/\1/p' "$CFG" 2>/dev/null || echo no)"
+  echo "boot setting: SD_DISKS=$(sed -n 's/^SD_DISKS="\(.*\)"/\1/p' "$CFG" 2>/dev/null || echo yes)"
   if [ -z "$h" ] || [ ! -d "$TPG" ]; then echo "not active"; return 0; fi
   local n; for n in $(sd_names "$h"); do lsblk -dno NAME,SIZE,VENDOR,MODEL,SERIAL "/dev/$n"; done
 }
@@ -170,13 +171,13 @@ say() { echo "fusionio: $*"; logger -t fusionio "$*"; }
 
 # Optional: show the cards as sd disks (see: fusionio-scsi)
 sd_disks() {
-  SD_DISKS=no
+  SD_DISKS=yes
   [ -f "$DIR/fusionio.cfg" ] && . "$DIR/fusionio.cfg"
   [ "$SD_DISKS" = "yes" ] && /usr/local/sbin/fusionio-scsi start
 }
 
 mkdir -p "$DIR"
-[ -f "$DIR/fusionio.cfg" ] || echo 'SD_DISKS="no"' > "$DIR/fusionio.cfg"
+[ -f "$DIR/fusionio.cfg" ] || echo 'SD_DISKS="yes"' > "$DIR/fusionio.cfg"
 
 if lsmod | grep -q '^iomemory_vsl'; then
   say "driver already loaded"

@@ -1,104 +1,124 @@
 # Fusion-io driver for Unraid
 
-Unraid plugin that loads the community **iomemory-vsl (VSL3)** driver for
-Fusion-io / SanDisk **ioDrive, ioDrive2, ioScale and ioScale2** PCIe flash cards.
-Unraid's kernel has no driver for these cards; with this plugin they show up
-as `/dev/fioa`, `/dev/fiob`, …
+This plugin makes old **Fusion-io / SanDisk flash cards** work in Unraid:
+**ioDrive, ioDrive2, ioScale and ioScale2**.
 
-The driver itself is [RemixVSL/iomemory-vsl](https://github.com/RemixVSL/iomemory-vsl),
-the community-maintained version of SanDisk's last VSL 3.2.16 driver.
-This repository only builds it for each Unraid kernel and loads it at boot.
+Unraid doesn't come with a driver for these cards, so normally they are
+invisible. After installing this plugin, your cards show up in the Unraid web
+interface like any other disk.
 
-> **Not for newer cards:** ioMemory SX300/SX350/PX600 (Gen3) need the VSL4
-> driver, which this plugin does not include.
+> **Newer cards are not supported.** The ioMemory SX300, SX350 and PX600 need a
+> different driver (VSL4), which this plugin does not include.
 
-## Install
+## How to install
 
-In the Unraid web interface go to **Plugins → Install Plugin**, paste this URL
-and click **Install**:
+1. In the Unraid web interface, go to **Plugins → Install Plugin**.
+2. Paste this link and click **Install**:
 
-```
-https://raw.githubusercontent.com/LookAtMyC/unraid-fusionio/main/fusionio.plg
-```
+   ```
+   https://raw.githubusercontent.com/LookAtMyC/unraid-fusionio/main/fusionio.plg
+   ```
 
-The plugin downloads the driver built for your exact kernel, checks its
-SHA-256, stores it on the flash drive and loads it. It runs again on every
-boot. Check the result with:
+3. Go to the **Main** tab. Your cards are listed under **Unassigned Devices**
+   (vendor `FUSIONIO`, with the card's model name and serial number).
 
-```bash
-dmesg | grep fioinf
-ls /dev/fio*
-```
+That's it. The plugin runs again at every boot, so the cards are always there.
 
-## Unraid updates
+## Things to know
 
-Each driver only works with the kernel it was built for. A GitHub Action checks
-Unraid's release list every day and builds the driver for any new kernel, so a
-build is normally available within a day of a new Unraid release.
+- **Same card, new name.** Each card appears as a normal disk (for example
+  `sdb`). Unraid recognises it by its serial number, so it stays the same disk
+  after a reboot.
+- **A little slower.** Showing the card as a normal disk costs some speed:
+  roughly 15–25 % in our tests (about 1.15 GB/s instead of 1.4 GB/s on an
+  ioScale). The cards are still very fast.
+- **Using the cards in the array or a pool** should work, but we have only
+  tested them with Unassigned Devices so far. Feedback is welcome.
+- **Old data stays.** The plugin doesn't format or change anything on your
+  cards. If they were used in another computer before, the old partitions are
+  still there until you format them.
 
-After updating Unraid and rebooting, the plugin fetches the new build
-automatically. If it is not available yet, the cards are simply absent and the
-system log says so (`grep fusionio /var/log/syslog`). Reboot again once the
-build is listed under [Releases](https://github.com/LookAtMyC/unraid-fusionio/releases).
+## After an Unraid update
 
-## Show the cards in the Unraid web interface (optional)
+Every Unraid version needs its own copy of the driver. We build it
+automatically: every day we check for new Unraid versions and build a new
+driver, usually within a day of an Unraid release.
 
-Unraid's web interface and the Unassigned Devices plugin only list `sd`, `hd`
-and `nvme` disks, so `/dev/fioX` does not show up there. The driver cannot
-present itself as a SCSI disk (SanDisk's closed part of VSL3 lacks that code),
-but the kernel's own **loopback SCSI target** can wrap each card as a normal
-`/dev/sdX` disk. To turn this on, run once in the Unraid terminal:
+After you update Unraid and restart, the plugin downloads the right driver by
+itself. If it isn't ready yet, your cards are simply missing until it is.
+Check the [Releases](https://github.com/LookAtMyC/unraid-fusionio/releases)
+page, then restart once more when your version is listed.
 
-```bash
-fusionio-scsi enable
-```
+## Commands (optional)
 
-Each card then appears as an `sd` disk with vendor `FUSIONIO`, its model name
-and its real serial number, so Unraid recognises it after every reboot. The
-setting is stored in `/boot/config/plugins/fusionio/fusionio.cfg`
-(`SD_DISKS="yes"`) and applied at every boot.
+You can run these in the Unraid terminal. You don't need them for normal use.
 
-- `fusionio-scsi status` shows the current state, `fusionio-scsi disable`
-  turns it off (unmount the disks / stop the array first).
-- The data is the same: `sdX` reads and writes the card directly, nothing is
-  converted. While a card is shown as `sdX`, `/dev/fioX` is locked so it can't
-  be used twice by accident.
-- The extra layer costs some speed: about 15–25 % lower sequential throughput
-  in a quick test (1.15 GB/s instead of 1.4 GB/s on an ioScale).
-- Tested with Unassigned Devices. Array/pool use is possible in principle but
-  not tested yet.
+| Command | What it does |
+|---|---|
+| `fusionio-scsi status` | Shows whether the cards are shown as normal disks |
+| `fusionio-scsi disable` | Stops showing the cards as normal disks (now and after reboot). Stop the array or unmount the disks first. |
+| `fusionio-scsi enable` | Turns it back on |
 
-## Using the cards
+When it's turned off, the cards are only available as `/dev/fioa`,
+`/dev/fiob`, … You won't see them in the web interface, but you can format
+and mount them yourself from the terminal (full speed, no extra layer).
 
-- Without the option above, the cards appear only as `/dev/fioX`. Formatting
-  and mounting them manually works (e.g. `mkfs.xfs /dev/fioa` then mount under
-  `/mnt/disks/...`).
-- Firmware: the driver expects firmware 7.1.x (VSL 3.2.x). Very old cards may
-  need a firmware update, done with SanDisk's `fio-update-iodrive` tool from
-  another Linux system.
-- `fio-status`, `fio-format` etc. are not included. They are SanDisk's
-  proprietary utilities; see [RemixVSL/vsl_downloads](https://github.com/RemixVSL/vsl_downloads).
+To see if the driver is working: `dmesg | grep fioinf` or `ls /dev/fio*`.
+Plugin messages are in the system log: `grep fusionio /var/log/syslog`.
 
-## Build it yourself
+## Problems
 
-Needs only `bash` and `docker` (Linux, macOS, or Windows with Git Bash):
+- **Cards not showing up:** check `grep fusionio /var/log/syslog`. Often the
+  driver for a brand-new Unraid version just isn't built yet.
+- **Firmware:** the driver needs card firmware 7.1.x. Very old cards may need
+  a firmware update first, using SanDisk's tools on another Linux computer.
+- **SanDisk tools** such as `fio-status` and `fio-format` aren't included.
+  You can find them at [RemixVSL/vsl_downloads](https://github.com/RemixVSL/vsl_downloads).
+
+Please report problems on the [Issues](https://github.com/LookAtMyC/unraid-fusionio/issues) page.
+
+## Warning
+
+This is an unofficial driver for hardware that SanDisk no longer supports.
+It could lose data. Test it before you put anything important on the cards,
+and keep backups.
+
+## For developers
+
+### Where the driver comes from
+
+The driver is [RemixVSL/iomemory-vsl](https://github.com/RemixVSL/iomemory-vsl),
+a community-maintained version of SanDisk's last driver (VSL 3.2.16). This
+repository only builds it for each Unraid kernel and loads it at boot.
+
+### How the cards become normal disks
+
+The driver itself can only create `/dev/fioX` devices (SanDisk's closed part
+of the driver has no SCSI support). The plugin then uses the Linux kernel's
+built-in loopback SCSI target (`tcm_loop` with an `iblock` backstore) to show
+each `/dev/fioX` as a SCSI disk `/dev/sdX`. Reads and writes go straight
+through to the card. While a card is shown this way, `/dev/fioX` is locked so
+it can't be used twice by accident. The setting is stored in
+`/boot/config/plugins/fusionio/fusionio.cfg` (`SD_DISKS="yes"` or `"no"`).
+
+### Building the driver yourself
+
+You only need `bash` and `docker` (Linux, macOS, or Windows with Git Bash):
 
 ```bash
 build/build.sh 7.1.4 out
 ```
 
-This downloads the Unraid 7.1.4 release, extracts Unraid's kernel config and
-patches, builds a matching kernel tree in a `gcc` container of the same
-version Unraid used, compiles the driver and writes
-`out/iomemory-vsl-<kernel>.ko`. Copy it to
-`/boot/config/plugins/fusionio/` on the server and the plugin will use it.
+This downloads the Unraid 7.1.4 release, takes its kernel settings, builds a
+matching kernel with the same compiler version Unraid used, compiles the driver
+and saves `out/iomemory-vsl-<kernel>.ko`. Copy that file to
+`/boot/config/plugins/fusionio/` on your server and the plugin uses it instead
+of downloading one.
 
-## Warning
-
-This is an unofficial, unsupported driver for hardware that is out of support.
-It may cause data loss. Test before trusting it with data you care about.
+GitHub Actions ([build.yml](.github/workflows/build.yml)) runs the same script
+for every Unraid version since 6.12.9 and publishes the results as releases.
 
 ## License
 
-GPL-2.0, the same as the driver. The driver includes SanDisk's
-binary `libkfio` component, distributed by the RemixVSL project.
+GPL-2.0, the same as the driver. The driver includes SanDisk's closed-source
+`libkfio` part, which the RemixVSL project distributes.
