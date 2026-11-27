@@ -14,7 +14,7 @@
         version="&version;"
         pluginURL="&pluginURL;"
         support="&gitURL;/issues"
-        min="6.12.0"
+        min="7.1.4"
         icon="hdd-o">
 
 <CHANGES>

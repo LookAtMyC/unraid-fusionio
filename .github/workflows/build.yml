@@ -25,6 +25,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTED: ${{ github.event.inputs.versions }}
+          MIN_VERSION: "7.1.4"
         run: |
           export EXISTING="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 500 --json tagName --jq '.[].tagName')"
           matrix="$(python3 .github/scripts/plan.py)"

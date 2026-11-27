@@ -7,6 +7,8 @@ Unraid doesn't come with a driver for these cards, so normally they are
 invisible. After installing this plugin, your cards show up in the Unraid web
 interface like any other disk.
 
+> **Needs Unraid 7.1.4 or newer.**
+>
 > **Newer cards are not supported.** The ioMemory SX300, SX350 and PX600 need a
 > different driver (VSL4), which this plugin does not include.
 
@@ -116,7 +118,9 @@ and saves `out/iomemory-vsl-<kernel>.ko`. Copy that file to
 of downloading one.
 
 GitHub Actions ([build.yml](.github/workflows/build.yml)) runs the same script
-for every Unraid version since 6.12.9 and publishes the results as releases.
+for every Unraid version since 7.1.4 and publishes the results as releases.
+Older Unraid versions aren't built automatically, but `build/build.sh` works
+for them too.
 
 ## License
 
