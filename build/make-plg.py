@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
 OUT = ROOT / "fusionio.plg"
 
-VERSION = "2026.11.27"
+VERSION = "2026.11.27a"
 REPO = "LookAtMyC/unraid-fusionio"
 PLUGIN_DIR = "/usr/local/emhttp/plugins/fusionio"
 

@@ -3,7 +3,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "fusionio">
 <!ENTITY author    "LookAtMyC">
-<!ENTITY version   "2026.11.27">
+<!ENTITY version   "2026.11.27a">
 <!ENTITY gitURL    "https://github.com/LookAtMyC/unraid-fusionio">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/LookAtMyC/unraid-fusionio/main/fusionio.plg">
 ]>
@@ -558,9 +558,12 @@ function fio_array_on(string $id): void {
     if ($c['mountpoint']) throw new FioError("{$c['product']} is mounted; unmount it first");
     fio_run('modprobe target_core_iblock; modprobe tcm_loop');
     if (!is_dir(FIO_TGT)) fio_run('mount -t configfs none /sys/kernel/config');
-    if (!is_dir(FIO_TGT . '/loopback')) throw new FioError('kernel loopback SCSI target is not available');
+    if (!is_dir(FIO_TGT)) throw new FioError('kernel SCSI target (configfs) is not available');
 
+    // The "loopback" folder only appears when it is first created (that is
+    // how the kernel's target framework works), so create the path directly.
     @mkdir(FIO_TPG, 0755, true);
+    if (!is_dir(FIO_TPG)) throw new FioError('kernel loopback SCSI target is not available');
     if (fio_read(FIO_TPG . '/nexus') === '') fio_write(FIO_TPG . '/nexus', FIO_INIT_WWN);
 
     $name = $c['dev'];
