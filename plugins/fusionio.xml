@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<Plugin>
+  <Name>Fusion-io Driver</Name>
+  <PluginURL>https://raw.githubusercontent.com/LookAtMyC/unraid-fusionio/main/fusionio.plg</PluginURL>
+  <PluginAuthor>LookAtMyC</PluginAuthor>
+  <Overview>Driver and management for Fusion-io / SanDisk ioDrive, ioDrive2, ioScale and ioScale2 PCIe flash cards. Unraid has no driver for these cards; this plugin loads the community iomemory-vsl (VSL3) driver built for your exact Unraid version and adds a "Fusion-io Devices" section to the Main tab: card temperature and power, mount/unmount, auto mount, format (XFS/BTRFS), and a per-card switch to use a card in the array or a cache pool. A Dashboard tile shows the cards at a glance. Not for newer ioMemory SX300/SX350/PX600 cards (VSL4). Unofficial driver: test before trusting it with important data.</Overview>
+  <Category>Drivers:</Category>
+  <Support>https://github.com/LookAtMyC/unraid-fusionio/issues</Support>
+  <Project>https://github.com/LookAtMyC/unraid-fusionio</Project>
+  <ReadMe>https://raw.githubusercontent.com/LookAtMyC/unraid-fusionio/main/README.md</ReadMe>
+  <Icon>https://raw.githubusercontent.com/LookAtMyC/unraid-fusionio/main/icon.png</Icon>
+  <License>GPLv2</License>
+  <MinVer>7.1.4</MinVer>
+  <ExtraSearchTerms>fusionio fusion-io iodrive iodrive2 ioscale sandisk iomemory vsl flash pcie ssd driver</ExtraSearchTerms>
+</Plugin>

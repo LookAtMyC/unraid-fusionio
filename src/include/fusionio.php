@@ -109,6 +109,12 @@ function fio_cards(): array {
         }
 
         $mountpoint = $mounts[$part] ?? null;
+        if ($arrayMode && $sdName) {
+            // in the array or a pool: Unraid mounts the sd disk (or its partition)
+            foreach (array_merge(["/dev/$sdName"], array_map(fn($p) => '/dev/' . basename($p), glob("/sys/block/$sdName/$sdName*") ?: [])) as $d) {
+                if (isset($mounts[$d])) { $mountpoint = $mounts[$d]; break; }
+            }
+        }
         $used = $total = null;
         if ($mountpoint) {
             $total = @disk_total_space($mountpoint);

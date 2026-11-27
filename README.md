@@ -38,6 +38,9 @@ use, and you can:
   everything on it.
 - **Array / pool**: see below.
 
+The **Dashboard** also gets a Fusion-io tile with each card's temperature,
+power use, where it is mounted and how full it is.
+
 ## Using a card in the array or a pool
 
 Unraid only lets "normal" disks into the array or a pool, and Fusion-io cards
@@ -54,8 +57,7 @@ Unassigned Devices.
   starts.
 - **Turning it off:** first remove the disk from the array or pool (or stop
   the array), then turn the switch off.
-- Using the cards in the array or a pool should work, but we have only tested
-  it with Unassigned Devices so far. Feedback is welcome.
+- Tested as a cache pool device.
 
 ## Things to know
 

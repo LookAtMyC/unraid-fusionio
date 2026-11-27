@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<CommunityApplications>
+  <Profile>
+Unraid plugin for old **Fusion-io / SanDisk PCIe flash cards** (ioDrive, ioDrive2, ioScale, ioScale2).
+
+The driver is built automatically for every Unraid release since 7.1.4 and published on GitHub, so the cards keep working after Unraid updates. Questions and problems: please open an issue on GitHub.
+  </Profile>
+  <Icon>https://raw.githubusercontent.com/LookAtMyC/unraid-fusionio/main/icon.png</Icon>
+  <WebPage>https://github.com/LookAtMyC/unraid-fusionio</WebPage>
+</CommunityApplications>

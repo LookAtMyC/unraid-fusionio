@@ -1,0 +1,28 @@
+Menu="Dashboard:0"
+Cond="version_compare(parse_ini_file('/etc/unraid-version')['version'],'6.11.9','>')"
+---
+<?php
+require_once '/usr/local/emhttp/plugins/fusionio/include/dashboard.php';
+$fioRows = fio_dash_rows();
+
+$mytiles['fusionio']['column2'] = <<<EOT
+<tbody title="Fusion-io Devices" id="fio-dash">
+<tr><td><i class='fa fa-bolt f32'></i><div class='section'>Fusion-io<br><span>Flash cards</span><br></div>
+<a href='/Main' title="Go to Fusion-io Devices on the Main page"><i class='fa fa-fw fa-cog control'></i></a>
+</td></tr>
+$fioRows
+<script>
+(function () {
+  function fioDashRefresh() {
+    $.get('/plugins/fusionio/include/dashboard.php', function (html) {
+      var tb = $('#fio-dash');
+      tb.find('tr.fio-dash-row').remove();
+      tb.append(html);
+    });
+  }
+  setInterval(fioDashRefresh, 10000);
+})();
+</script>
+</tbody>
+EOT;
+?>

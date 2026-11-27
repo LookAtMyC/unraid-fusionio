@@ -22,6 +22,7 @@
 - Loads the community iomemory-vsl (VSL3) driver for Fusion-io / SanDisk ioDrive, ioDrive2, ioScale and ioScale2 cards.
 - New "Fusion-io Devices" section on the Main page: card health, mount/unmount, auto mount, format.
 - Per card "Array / pool" switch: shows the card as a normal disk so it can be used in the array or a pool.
+- Dashboard tile with temperature, power and usage of each card.
 </CHANGES>
 
 <FILE Name="/usr/local/emhttp/plugins/fusionio/FusionIO.page">
@@ -153,6 +154,41 @@ Tag="bolt"
 </INLINE>
 </FILE>
 
+<FILE Name="/usr/local/emhttp/plugins/fusionio/FusionIO_dashboard.page">
+<INLINE>
+<![CDATA[
+Menu="Dashboard:0"
+Cond="version_compare(parse_ini_file('/etc/unraid-version')['version'],'6.11.9','>')"
+---
+<?php
+require_once '/usr/local/emhttp/plugins/fusionio/include/dashboard.php';
+$fioRows = fio_dash_rows();
+
+$mytiles['fusionio']['column2'] = <<<EOT
+<tbody title="Fusion-io Devices" id="fio-dash">
+<tr><td><i class='fa fa-bolt f32'></i><div class='section'>Fusion-io<br><span>Flash cards</span><br></div>
+<a href='/Main' title="Go to Fusion-io Devices on the Main page"><i class='fa fa-fw fa-cog control'></i></a>
+</td></tr>
+$fioRows
+<script>
+(function () {
+  function fioDashRefresh() {
+    $.get('/plugins/fusionio/include/dashboard.php', function (html) {
+      var tb = $('#fio-dash');
+      tb.find('tr.fio-dash-row').remove();
+      tb.append(html);
+    });
+  }
+  setInterval(fioDashRefresh, 10000);
+})();
+</script>
+</tbody>
+EOT;
+?>
+]]>
+</INLINE>
+</FILE>
+
 <FILE Name="/usr/local/emhttp/plugins/fusionio/include/action.php">
 <INLINE>
 <![CDATA[
@@ -201,6 +237,57 @@ try {
     $msg = $e->getMessage();
 }
 echo json_encode(['ok' => $ok, 'message' => $msg]);
+]]>
+</INLINE>
+</FILE>
+
+<FILE Name="/usr/local/emhttp/plugins/fusionio/include/dashboard.php">
+<INLINE>
+<![CDATA[
+<?php
+/*
+ * Rows of the Fusion-io Dashboard tile. Included by FusionIO_dashboard.page
+ * when the Dashboard loads, and fetched again every few seconds to refresh.
+ */
+require_once __DIR__ . '/fusionio.php';
+
+function fio_dash_rows(): string {
+    $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
+    if (!is_dir('/sys/module/iomemory_vsl')) {
+        return "<tr class='fio-dash-row'><td>Driver not loaded. See <code>grep fusionio /var/log/syslog</code></td></tr>";
+    }
+    $cards = fio_cards();
+    if (!$cards) return "<tr class='fio-dash-row'><td>No cards found</td></tr>";
+
+    $out = '';
+    foreach ($cards as $c) {
+        $temp = $c['temp'] !== null ? round($c['temp']) . ' °C' : '? °C';
+        $hot = $c['temp'] !== null && $c['temp'] >= 70 ? " style='color:#e68a00'" : '';
+        if ($c['array_mode']) {
+            $where = 'Array / pool' . ($c['sd'] ? ' (' . $h($c['sd']) . ')' : '');
+        } elseif ($c['mountpoint']) {
+            $where = $h($c['mountpoint']);
+        } else {
+            $where = 'Not mounted';
+        }
+        $pct = ($c['total'] && $c['used'] !== null) ? (int)round(100 * $c['used'] / $c['total']) : null;
+        $bar = $pct === null ? '' :
+            "<span class='load'>{$pct}%</span><div class='usage-disk sys'><span style='width:{$pct}%'></span><span></span></div>";
+
+        $out .= "<tr class='fio-dash-row'><td>"
+              . "<span class='w44'><b>" . $h($c['product']) . "</b><br><small>SN " . $h($c['serial']) . "</small></span>"
+              . "<span class='w26'><span$hot>$temp</span><br><small>{$c['power_w']} W</small></span>"
+              . "<span class='w26'><small>$where</small>$bar</span>"
+              . "</td></tr>";
+    }
+    return $out;
+}
+
+// fetched by the tile's refresh script
+if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
+    header('Cache-Control: no-store');
+    echo fio_dash_rows();
+}
 ]]>
 </INLINE>
 </FILE>
@@ -319,6 +406,12 @@ function fio_cards(): array {
         }
 
         $mountpoint = $mounts[$part] ?? null;
+        if ($arrayMode && $sdName) {
+            // in the array or a pool: Unraid mounts the sd disk (or its partition)
+            foreach (array_merge(["/dev/$sdName"], array_map(fn($p) => '/dev/' . basename($p), glob("/sys/block/$sdName/$sdName*") ?: [])) as $d) {
+                if (isset($mounts[$d])) { $mountpoint = $mounts[$d]; break; }
+            }
+        }
         $used = $total = null;
         if ($mountpoint) {
             $total = @disk_total_space($mountpoint);

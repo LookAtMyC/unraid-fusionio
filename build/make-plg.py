@@ -23,6 +23,7 @@ CHANGES = """\
 - Loads the community iomemory-vsl (VSL3) driver for Fusion-io / SanDisk ioDrive, ioDrive2, ioScale and ioScale2 cards.
 - New "Fusion-io Devices" section on the Main page: card health, mount/unmount, auto mount, format.
 - Per card "Array / pool" switch: shows the card as a normal disk so it can be used in the array or a pool.
+- Dashboard tile with temperature, power and usage of each card.
 """
 
 INSTALL = r"""
