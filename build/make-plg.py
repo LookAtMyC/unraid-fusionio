@@ -18,6 +18,9 @@ REPO = "LookAtMyC/unraid-fusionio"
 PLUGIN_DIR = "/usr/local/emhttp/plugins/fusionio"
 
 CHANGES = """\
+###2026.11.27a
+- Fix: cards set to "Array / pool" were not switched at boot, so the pool disk was missing after a restart.
+
 ###2026.11.27
 - First release.
 - Loads the community iomemory-vsl (VSL3) driver for Fusion-io / SanDisk ioDrive, ioDrive2, ioScale and ioScale2 cards.
