@@ -1,0 +1,238 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name      "fusionio">
+<!ENTITY author    "LookAtMyC">
+<!ENTITY version   "2026.11.27">
+<!ENTITY repo      "LookAtMyC/unraid-fusionio">
+<!ENTITY gitURL    "https://github.com/&repo;">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/&repo;/main/fusionio.plg">
+<!ENTITY plugin    "/boot/config/plugins/&name;">
+]>
+
+<PLUGIN name="&name;"
+        author="&author;"
+        version="&version;"
+        pluginURL="&pluginURL;"
+        support="&gitURL;/issues"
+        min="6.12.0"
+        icon="hdd-o">
+
+<CHANGES>
+###2026.11.27
+- First release: loads the community iomemory-vsl (VSL3) driver for Fusion-io / SanDisk ioDrive, ioDrive2, ioScale and ioScale2 cards.
+</CHANGES>
+
+<!-- Helper: present the cards as normal SCSI (sd) disks through the kernel's
+     loopback SCSI target, so the Unraid web interface can see them. -->
+<FILE Name="/usr/local/sbin/fusionio-scsi" Mode="0755">
+<INLINE>
+<![CDATA[
+#!/bin/bash
+# fusionio-scsi: show Fusion-io cards (/dev/fioX) as SCSI disks (/dev/sdX)
+# using the kernel's loopback SCSI target (tcm_loop + iblock).
+#
+#   fusionio-scsi enable    turn on at boot and start now
+#   fusionio-scsi disable   turn off at boot and stop now
+#   fusionio-scsi start | stop | status
+#
+# Each card keeps its own serial number, so Unraid sees the same disk
+# after every reboot. While a card is shown as sd, /dev/fioX is held by
+# the kernel and cannot be mounted directly (that prevents double use).
+CFG=/boot/config/plugins/fusionio/fusionio.cfg
+T=/sys/kernel/config/target
+TGT_WWN=naa.5001405f10000001       # loopback target port
+INIT_WWN=naa.5001405f10000002      # loopback initiator port
+TPG=$T/loopback/$TGT_WWN/tpgt_1
+
+say() { echo "fusionio-scsi: $*"; logger -t fusionio "$*"; }
+
+set_cfg() {
+  mkdir -p "$(dirname "$CFG")"
+  touch "$CFG"
+  sed -i '/^SD_DISKS=/d' "$CFG"
+  echo "SD_DISKS=\"$1\"" >> "$CFG"
+}
+
+# Card info for /dev/fioX: prints "product|serial"
+card_info() {
+  local dev=$1 fct info product serial
+  fct=$(cut -d: -f1 "/proc/fusion/fio/$dev/data_device" 2>/dev/null)
+  info="/proc/fusion/iodrive/$fct/board_info"
+  product=$(sed -n 's/^ *Product: *//p' "$info" 2>/dev/null | sed 's/^Fusion-io //')
+  serial=$(sed -n 's/^ *SN: *//p' "$info" 2>/dev/null | tr -cd 'A-Za-z0-9')
+  echo "${product:-ioMemory}|${serial:-$dev}"
+}
+
+# sd device names currently provided by the loopback host
+sd_names() {
+  local b
+  for b in "$1"/device/target*/*/block/*; do [ -e "$b" ] && basename "$b"; done
+}
+
+host_dir() {
+  local p
+  for p in /sys/class/scsi_host/host*/proc_name; do
+    grep -qx tcm_loopback "$p" 2>/dev/null && { dirname "$p"; return; }
+  done
+}
+
+start() {
+  ls /dev/fio[a-z] >/dev/null 2>&1 || { say "no Fusion-io devices found"; return 1; }
+  modprobe target_core_iblock && modprobe tcm_loop || { say "kernel target modules missing"; return 1; }
+  mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
+
+  mkdir -p "$TPG"
+  [ -n "$(cat "$TPG/nexus" 2>/dev/null)" ] || echo "$INIT_WWN" > "$TPG/nexus"
+
+  local i=0 dev name info product serial D L
+  for dev in /dev/fio[a-z]; do
+    name=$(basename "$dev")
+    D=$T/core/iblock_0/$name
+    L=$TPG/lun/lun_$i
+    i=$((i + 1))
+    if [ -L "$L/$name" ]; then continue; fi
+    info=$(card_info "$name")
+    product=${info%%|*}; serial=${info##*|}
+    mkdir -p "$D"
+    echo "udev_path=$dev" > "$D/control"
+    echo "$serial" > "$D/wwn/vpd_unit_serial"
+    if ! echo 1 > "$D/enable"; then
+      say "cannot claim $dev (is it mounted?)"; rmdir "$D" 2>/dev/null; continue
+    fi
+    echo FUSIONIO > "$D/wwn/vendor_id" 2>/dev/null
+    echo "${product:0:16}" > "$D/wwn/product_id" 2>/dev/null
+    # pass TRIM/discard through when the card supports it
+    [ "$(cat /sys/block/$name/queue/discard_max_bytes 2>/dev/null)" != "0" ] && echo 1 > "$D/attrib/emulate_tpu" 2>/dev/null
+    mkdir -p "$L"
+    ln -s "$D" "$L/$name"
+    say "$dev ($product, SN $serial) shown as SCSI disk"
+  done
+
+  local h; h=$(host_dir)
+  [ -n "$h" ] && echo "- - -" > "$h/scan"
+  sleep 2
+  status
+}
+
+stop() {
+  [ -d "$TPG" ] || { say "not active"; return 0; }
+  local h sd L link name
+  h=$(host_dir)
+  # refuse if any of the sd disks is in use
+  if [ -n "$h" ]; then
+    for sd in $(sd_names "$h"); do
+      if grep -q "^/dev/$sd" /proc/mounts; then say "/dev/$sd is mounted; unmount it (or stop the array) first"; return 1; fi
+    done
+    # remove the sd devices cleanly before tearing down the target
+    for d in "$h"/device/target*/*:*:*:*/delete; do [ -f "$d" ] && echo 1 > "$d"; done
+  fi
+  for L in "$TPG"/lun/lun_*; do
+    [ -d "$L" ] || continue
+    for link in "$L"/*; do [ -L "$link" ] && rm "$link"; done
+    rmdir "$L"
+  done
+  [ -n "$(cat "$TPG/nexus" 2>/dev/null)" ] && echo NULL > "$TPG/nexus" 2>/dev/null
+  rmdir "$TPG" "$T/loopback/$TGT_WWN" 2>/dev/null
+  for name in "$T"/core/iblock_0/fio*; do [ -d "$name" ] && rmdir "$name"; done
+  say "SCSI disks removed; cards are available as /dev/fioX again"
+}
+
+status() {
+  local h; h=$(host_dir)
+  echo "boot setting: SD_DISKS=$(sed -n 's/^SD_DISKS="\(.*\)"/\1/p' "$CFG" 2>/dev/null || echo no)"
+  if [ -z "$h" ] || [ ! -d "$TPG" ]; then echo "not active"; return 0; fi
+  local n; for n in $(sd_names "$h"); do lsblk -dno NAME,SIZE,VENDOR,MODEL,SERIAL "/dev/$n"; done
+}
+
+case "$1" in
+  start)   start ;;
+  stop)    stop ;;
+  status)  status ;;
+  enable)  set_cfg yes; start ;;
+  disable) set_cfg no; stop ;;
+  *) echo "usage: fusionio-scsi enable|disable|start|stop|status"; exit 1 ;;
+esac
+]]>
+</INLINE>
+</FILE>
+
+<!-- Runs on install and on every boot. -->
+<FILE Run="/bin/bash">
+<INLINE>
+<![CDATA[
+REPO="LookAtMyC/unraid-fusionio"
+DIR="/boot/config/plugins/fusionio"
+KV="$(uname -r)"
+KO="$DIR/iomemory-vsl-$KV.ko"
+URL="https://github.com/$REPO/releases/download/$KV/iomemory-vsl-$KV.ko"
+
+say() { echo "fusionio: $*"; logger -t fusionio "$*"; }
+
+# Optional: show the cards as sd disks (see: fusionio-scsi)
+sd_disks() {
+  SD_DISKS=no
+  [ -f "$DIR/fusionio.cfg" ] && . "$DIR/fusionio.cfg"
+  [ "$SD_DISKS" = "yes" ] && /usr/local/sbin/fusionio-scsi start
+}
+
+mkdir -p "$DIR"
+[ -f "$DIR/fusionio.cfg" ] || echo 'SD_DISKS="no"' > "$DIR/fusionio.cfg"
+
+if lsmod | grep -q '^iomemory_vsl'; then
+  say "driver already loaded"
+  sd_disks
+  exit 0
+fi
+
+if [ ! -f "$KO" ]; then
+  say "downloading driver for kernel $KV"
+  ok=""
+  for try in 1 2 3 4 5; do
+    if wget -q -T 15 -O "$KO.part" "$URL" && wget -q -T 15 -O "$KO.sha256" "$URL.sha256"; then
+      ok=1; break
+    fi
+    sleep 5
+  done
+  if [ -z "$ok" ]; then
+    rm -f "$KO.part" "$KO.sha256"
+    say "no driver available for kernel $KV yet (or no network)."
+    say "builds appear at https://github.com/$REPO/releases a day or so after a new Unraid release."
+    exit 0
+  fi
+  want="$(cut -d' ' -f1 "$KO.sha256")"
+  got="$(sha256sum "$KO.part" | cut -d' ' -f1)"
+  if [ "$want" != "$got" ]; then
+    rm -f "$KO.part" "$KO.sha256"
+    say "checksum mismatch for downloaded driver, not loading it"
+    exit 0
+  fi
+  mv "$KO.part" "$KO"
+  rm -f "$KO.sha256"
+fi
+
+# Drop drivers built for other kernels (left over from earlier Unraid versions).
+find "$DIR" -maxdepth 1 -name 'iomemory-vsl-*.ko' ! -name "iomemory-vsl-$KV.ko" -delete
+
+if insmod "$KO"; then
+  sleep 3
+  say "driver loaded; devices: $(ls /dev/fio[a-z] 2>/dev/null | tr '\n' ' ')"
+  sd_disks
+else
+  say "insmod failed, see 'dmesg | grep fio'"
+fi
+exit 0
+]]>
+</INLINE>
+</FILE>
+
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+<![CDATA[
+rm -rf /boot/config/plugins/fusionio
+rm -f /usr/local/sbin/fusionio-scsi
+echo "fusionio: plugin removed. The driver stays loaded until the next reboot."
+]]>
+</INLINE>
+</FILE>
+
+</PLUGIN>
